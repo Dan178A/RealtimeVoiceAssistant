@@ -252,19 +252,6 @@ Asistente: (Automáticamente escuchando y respondiendo)
 2. Agregaste `GEMINI_API_KEY=tu_clave_aqui`
 3. Ejecutas `dotenv.load_dotenv()` en el servidor
 
-### ❌ WebSocket desconecta
-
-**Solución:** Asegúrate que:
-1. El servidor FastAPI está corriendo (`http://localhost:8000`)
-2. Cambiar `ws://localhost:8000` a `ws://tu_ip:8000` si accedes remotamente
-3. Revisar que no haya firewall bloqueando WebSocket
-
-### ❌ Audio no se reproduce
-
-**Solución:**
-1. Verifica que la voz española esté disponible en tu navegador
-2. Ajusta `locucion.rate` y `locucion.pitch`
-3. Prueba con otra voz en `configurarVoz()`
 
 ---
 
