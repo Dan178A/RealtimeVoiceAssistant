@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Assistants</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.16/dist/vue.js"></script>
+    <style>
+        /* UI Estilo Gemini Live (Oscuro, Inmersivo) */
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f0f11; color: #ffffff; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        .header { padding: 20px; text-align: center; opacity: 0.7; font-size: 0.9em; letter-spacing: 1px;}
+        
+        .visualizer-container { flex: 1; display: flex; justify-content: center; align-items: center; position: relative; }
+        canvas { width: 100%; max-width: 800px; height: 300px; filter: drop-shadow(0 0 20px rgba(66, 133, 244, 0.5)); }
+        
+        .text-container { height: 35vh; padding: 20px 40px; overflow-y: auto; background: linear-gradient(to top, #0f0f11 80%, transparent); display: flex; flex-direction: column; justify-content: flex-end;}
+        .mensaje { font-size: 1.2em; line-height: 1.5; margin-bottom: 15px; opacity: 0.9; }
+        .usuario { color: #8ab4f8; }
+        .gemini { color: #e8eaed; }
+        
+        .status-bar { padding: 20px; text-align: center; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 0.8em; transition: color 0.3s;}
+        .status-idle { color: #5f6368; }
+        .status-listening { color: #fbbc04; animation: pulseText 1.5s infinite;}
+        .status-speaking { color: #34a853; }
+        
+        .btn-start { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #4285f4; color: white; border: none; padding: 15px 30px; border-radius: 30px; font-size: 1.2em; cursor: pointer; z-index: 10; box-shadow: 0 4px 15px rgba(66, 133, 244, 0.4);}
+        .btn-start:hover { background: #3367d6; }
+
+        @keyframes pulseText { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+        
+        /* Ocultamos scrollbar para más inmersión */
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div class="header">ASISTENTE IA V2.0</div>
+
+    <div class="visualizer-container">
+        <button v-if="estado === 'apagado'" class="btn-start" @click="iniciarSistema">INICIAR SISTEMA</button>
+        <canvas ref="canvas"></canvas>
+    </div>
+
+    <div class="text-container" ref="historialDiv">
+        <div v-for="(msg, index) in mensajes" :key="index" :class="['mensaje', msg.tipo]">
+            <span v-html="msg.texto"></span>
+        </div>
+        <div class="mensaje usuario" v-if="textoTemporal" style="opacity: 0.5;">
+            <i>{{ textoTemporal }}...</i>
+        </div>
+    </div>
+
+    <div class="status-bar" :class="claseEstado">
+        {{ textoEstado }}
+    </div>
+</div>
+
+<script>
+new Vue({
+    el: '#app',
+    data: {
+        ws: null,
+        reconocimiento: null,
+        estado: 'apagado', // apagado, durmiendo, escuchando_live, procesando, hablando
+        palabraActivacion: 'asistente',
+        textoTemporal: '',
+        mensajes: [],
+        silenceTimer: null,
+        
+        // Variables de Audio
+        audioContext: null,
+        analyser: null,
+        microphone: null,
+        
+        // Variables de TTS (Voz)
+        vozSeleccionada: null,
+        fraseAcumulada: "",
+    },
+    computed: {
+        claseEstado() {
+            if (this.estado === 'durmiendo') return 'status-idle';
+            if (this.estado === 'escuchando_live') return 'status-listening';
+            if (this.estado === 'hablando') return 'status-speaking';
+            return '';
+        },
+        textoEstado() {
+            if (this.estado === 'durmiendo') return `Diga "${this.palabraActivacion}" para iniciar conversación`;
+            if (this.estado === 'escuchando_live') return `Modo Live: Escuchando...`;
+            if (this.estado === 'procesando') return `Analizando...`;
+            if (this.estado === 'hablando') return `Respondiendo...`;
+            return '';
+        }
+    },
+    mounted() {
+        this.configurarVoz();
+    },
+    methods: {
+        configurarVoz() {
+            // Cargar voces del navegador y buscar una buena voz en español
+            window.speechSynthesis.onvoiceschanged = () => {
+                const voces = window.speechSynthesis.getVoices();
+                const voz = "Google español de Estados Unidos"
+                // Intenta buscar una voz de Google o de alta calidad
+                this.vozSeleccionada = voces.find(v => v.name === voz) || voces.find(v => v.lang.startsWith('es')) || null;
+            };
+        },
+
+        async iniciarSistema() {
+            // 1. Conexión WebSocket
+            this.ws = new WebSocket("ws://localhost:8000/ws/chat");
+            
+            this.ws.onmessage = (event) => {
+                if (event.data === "[FIN_RESPUESTA]") {
+                    // Leer lo que haya quedado acumulado
+                    if (this.fraseAcumulada.trim()) this.reproducirVoz(this.fraseAcumulada);
+                    this.fraseAcumulada = "";
+                    
+                    // Al terminar de hablar, NO vuelve a dormir, sigue en modo Live
+                    // Usamos un pequeño delay para que no se escuche a sí mismo
+                    setTimeout(() => {
+                        this.estado = 'escuchando_live';
+                    }, 500);
+                    
+                } else {
+                    this.estado = 'hablando';
+                    let ultimoMsg = this.mensajes[this.mensajes.length - 1];
+                    let chunk = event.data;
+                    
+                    if (ultimoMsg && ultimoMsg.tipo === 'gemini') {
+                        ultimoMsg.texto += chunk.replace(/\n/g, "<br>");
+                    }
+                    
+                    // Lógica para que hable de forma fluida: acumula hasta ver un punto o coma
+                    this.fraseAcumulada += chunk;
+                    if (chunk.includes('.') || chunk.includes('?') || chunk.includes('!') || chunk.includes(':')) {
+                        this.reproducirVoz(this.fraseAcumulada);
+                        this.fraseAcumulada = ""; // Reiniciamos para la siguiente frase
+                    }
+                }
+                this.$nextTick(() => { this.scrollAbajo(); });
+            };
+
+            // 2. Configurar STT
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            this.reconocimiento = new SpeechRecognition();
+            this.reconocimiento.lang = 'es-ES';
+            this.reconocimiento.continuous = true;
+            this.reconocimiento.interimResults = true;
+
+            try {
+                // Solicitar permisos y cancelar ruido de hardware
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } 
+                });
+                
+                this.iniciarVisualizador(stream);
+                this.reconocimiento.start();
+                this.estado = 'durmiendo';
+            } catch (e) {
+                alert("Necesitas dar permisos de micrófono.");
+            }
+
+            // 3. Lógica del Cerebro
+            this.reconocimiento.onresult = (event) => {
+                // Si la IA está hablando, ignoramos el micrófono para que no se interrumpa a sí misma
+                if (this.estado === 'hablando' || this.estado === 'procesando') return;
+
+                let transcripcionActual = "";
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcripcionActual += event.results[i][0].transcript;
+                }
+                
+                let textoLimpio = transcripcionActual.trim().toLowerCase();
+
+                // FASE 1: Despertar
+                if (this.estado === 'durmiendo') {
+                    if (textoLimpio.includes(this.palabraActivacion)) {
+                        this.estado = 'escuchando_live';
+                        this.textoTemporal = ""; 
+                        
+                        // Sonido de activación sutil (opcional)
+                        let osc = this.audioContext.createOscillator();
+                        osc.connect(this.audioContext.destination);
+                        osc.frequency.setValueAtTime(800, this.audioContext.currentTime);
+                        osc.start(); osc.stop(this.audioContext.currentTime + 0.1);
+                    }
+                    return;
+                }
+
+                // FASE 2: Conversación Continua
+                if (this.estado === 'escuchando_live') {
+                    // Comando para volver a dormir
+                    if (textoLimpio.includes("adiós") || textoLimpio.includes("apagar")) {
+                        this.estado = 'durmiendo';
+                        this.textoTemporal = "";
+                        return;
+                    }
+
+                    this.textoTemporal = transcripcionActual;
+                    
+                    clearTimeout(this.silenceTimer);
+                    this.silenceTimer = setTimeout(() => {
+                        this.enviarComando();
+                    }, 1500);
+                }
+            };
+
+            this.reconocimiento.onend = () => {
+                if (this.estado !== 'apagado') this.reconocimiento.start();
+            };
+        },
+
+        enviarComando() {
+            if (!this.textoTemporal.trim()) return;
+            this.mensajes.push({ tipo: 'usuario', texto: this.textoTemporal });
+            this.mensajes.push({ tipo: 'gemini', texto: '' }); 
+            this.ws.send(this.textoTemporal);
+            this.textoTemporal = "";
+            this.estado = 'procesando';
+            this.$nextTick(() => { this.scrollAbajo(); });
+        },
+
+        reproducirVoz(texto) {
+            // Usamos la API de síntesis de voz del navegador
+            if (!window.speechSynthesis) return;
+            
+            // Limpiamos etiquetas HTML y Markdown básico para que no las lea en voz alta
+            let textoLimpio = texto.replace(/<[^>]*>?/gm, '').replace(/\*/g, '');
+            if (!textoLimpio.trim()) return;
+
+            let locucion = new SpeechSynthesisUtterance(textoLimpio);
+            if (this.vozSeleccionada) locucion.voice = this.vozSeleccionada;
+            
+            locucion.rate = 1.1; // Un poco más rápido para mayor naturalidad
+            locucion.pitch = 1.0;
+            
+            window.speechSynthesis.speak(locucion);
+        },
+
+        iniciarVisualizador(stream) {
+            const canvas = this.$refs.canvas;
+            const canvasCtx = canvas.getContext("2d");
+            
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.analyser = this.audioContext.createAnalyser();
+            this.microphone = this.audioContext.createMediaStreamSource(stream);
+            
+            this.microphone.connect(this.analyser);
+            this.analyser.fftSize = 256;
+            
+            const bufferLength = this.analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            const draw = () => {
+                requestAnimationFrame(draw);
+                this.analyser.getByteFrequencyData(dataArray);
+
+                canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Color dependiendo del estado
+                let gradient = canvasCtx.createLinearGradient(0, 0, canvas.width, 0);
+                if (this.estado === 'escuchando_live') {
+                    gradient.addColorStop(0, "#fbbc04"); gradient.addColorStop(1, "#ea4335");
+                } else if (this.estado === 'hablando') {
+                    gradient.addColorStop(0, "#34a853"); gradient.addColorStop(1, "#4285f4");
+                } else {
+                    gradient.addColorStop(0, "#5f6368"); gradient.addColorStop(1, "#3c4043");
+                }
+
+                canvasCtx.fillStyle = gradient;
+                
+                // Dibujar una onda suavizada en el centro
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let x = 0;
+                
+                for(let i = 0; i < bufferLength; i++) {
+                    const barHeight = (dataArray[i] / 255) * canvas.height;
+                    
+                    // Dibujar hacia arriba y hacia abajo desde el centro
+                    const y = (canvas.height - barHeight) / 2;
+                    
+                    // Bordes redondeados
+                    canvasCtx.beginPath();
+                    canvasCtx.roundRect(x, y, barWidth - 2, barHeight, 10);
+                    canvasCtx.fill();
+
+                    x += barWidth;
+                }
+            };
+            draw();
+        },
+
+        scrollAbajo() {
+            const container = this.$refs.historialDiv;
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+});
+</script>
+</body>
+</html>
