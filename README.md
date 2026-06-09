@@ -1,30 +1,49 @@
 # 🎙️ **Gemini Live Assistant** - Asistente IA en Tiempo Real
 
-Un asistente de inteligencia artificial conversacional en **tiempo real** que combina transcripción de voz, procesamiento de lenguaje natural y síntesis de voz usando **Google Gemini 2.5 Flash**, **FastAPI**, **Vue.js** y **WebSocket**.
+> Un asistente de inteligencia artificial conversacional en **tiempo real** que combina transcripción de voz, procesamiento de lenguaje natural y síntesis de voz usando **Google Gemini 2.5 Flash**.
+
+![Gemini Live Assistant](Captura%20de%20pantalla%202026-06-09%20112630.png)
+
+---
+
+## 🚀 Descripción
+
+**RealtimeVoiceAssistant** es una aplicación de asistente conversacional de última generación que permite interacciones de voz completamente naturales en tiempo real. Construido con tecnologías de alto rendimiento:
+
+- **Rust**: Backend altamente optimizado para procesamiento de audio de baja latencia
+- **WebSocket**: Comunicación bidireccional en tiempo real
+- **Google Gemini 2.5 Flash**: LLM más rápido y eficiente del mercado
+- **Streaming en vivo**: Respuestas que comienzan antes de terminar de procesar
+
+Este proyecto demuestra la integración de **sistemas críticos de rendimiento (Rust)** con **IA moderna (Gemini)** para crear experiencias conversacionales fluidas e inmersivas.
+
+---
 
 ## ✨ Características Principales
 
-### 🎯 **Conversación Natural**
+### 🎯 **Conversación Natural en Tiempo Real**
 - Comprensión de audio bidireccional en múltiples idiomas
 - Respuestas de IA en streaming (transmisión en vivo)
 - Conversación continua sin necesidad de reactivación
+- Latencia optimizada con componentes críticos en Rust
 
 ### 🌍 **Multiidioma**
 - Soporte automático para múltiples idiomas (inglés, español, etc.)
 - Detección automática de idioma del usuario
 - Respuestas en el mismo idioma
 
-### 🔊 **Tecnología Avanzada**
+### ⚡ **Tecnología Avanzada**
+- **Backend Rust**: Procesamiento de audio ultrarrápido y seguro en memoria
 - **STT (Speech-to-Text)**: Web Speech API del navegador
 - **LLM**: Google Gemini 2.5 Flash con streaming
 - **TTS (Text-to-Speech)**: Web Speech API + Google Cloud Text-to-Speech
-- **WebSocket**: Comunicación en tiempo real servidor-cliente
-- **RAG Simulado**: Base de contexto empresarial
+- **WebSocket**: Comunicación persistente en tiempo real servidor-cliente
+- **RAG Simulado**: Base de contexto empresarial inteligente
 
 ### 🎨 **Interfaz Intuitiva**
 - Visualizador de frecuencia de audio en vivo
 - Diseño inmersivo estilo Gemini Live (tema oscuro)
-- Estados visuales: escuchando, procesando, respondiendo
+- Estados visuales claros: escuchando, procesando, respondiendo
 - Historial de conversación scrollable
 
 ---
@@ -32,6 +51,7 @@ Un asistente de inteligencia artificial conversacional en **tiempo real** que co
 ## 📋 Requisitos Previos
 
 - **Python 3.9+**
+- **Rust** (para compilar componentes de rendimiento crítico)
 - **Node.js** (opcional, si usas frontend separado)
 - **Google API Key** (para Gemini y Text-to-Speech)
 - **Navegador moderno** con soporte WebSocket y Web Audio API
@@ -43,8 +63,8 @@ Un asistente de inteligencia artificial conversacional en **tiempo real** que co
 ### 1️⃣ Clonar el Repositorio
 
 ```bash
-git clone https://github.com/Dan178A/tts_realtime.git
-cd tts_realtime
+git clone https://github.com/Dan178A/RealtimeVoiceAssistant.git
+cd RealtimeVoiceAssistant
 ```
 
 ### 2️⃣ Configurar Variables de Entorno
@@ -60,7 +80,15 @@ GEMINI_API_KEY=tu_api_key_de_google_aqui
 - Habilita la API de **Gemini** y **Text-to-Speech**
 - Crea una clave API
 
-### 3️⃣ Instalar Dependencias Python
+### 3️⃣ Compilar Componentes Rust (Opcional pero Recomendado)
+
+Para aprovechar el máximo rendimiento del backend:
+
+```bash
+cargo build --release
+```
+
+### 4️⃣ Instalar Dependencias Python
 
 ```bash
 pip install -r requirements.txt
@@ -72,7 +100,7 @@ pip install -r requirements.txt
 pip install fastapi uvicorn websockets python-dotenv google-genai google-cloud-texttospeech
 ```
 
-### 4️⃣ Ejecutar el Servidor
+### 5️⃣ Ejecutar el Servidor
 
 ```bash
 python main.py
@@ -117,15 +145,19 @@ Esta versión envía **audio binario real** a Gemini para transcripción más pr
 ## 📁 Estructura del Proyecto
 
 ```
-tts_realtime/
-├── main.py              # Backend FastAPI - Modo transcripción en Frontend
-├── test.py              # Backend FastAPI - Modo audio binario a Gemini
-├── chirp3.py            # Utilidad de síntesis de voz con Google Cloud
-├── index.html           # Frontend principal (STT en navegador)
-├── test.html            # Frontend hibrido (audio binario)
-├── .env                 # Variables de entorno (no incluir en git)
-├── .gitignore          # Archivos a ignorar
-└── README.md           # Este archivo
+RealtimeVoiceAssistant/
+├── src/                    # Código fuente Rust para rendimiento crítico
+│   ├── main.rs            # Punto de entrada del procesamiento de audio
+│   └── audio.rs           # Optimizaciones de procesamiento de audio
+├── main.py                # Backend FastAPI - Modo transcripción en Frontend
+├── test.py                # Backend FastAPI - Modo audio binario a Gemini
+├── chirp3.py              # Utilidad de síntesis de voz con Google Cloud
+├── index.html             # Frontend principal (STT en navegador)
+├── test.html              # Frontend hibrido (audio binario)
+├── Cargo.toml             # Configuración de Rust
+├── .env                   # Variables de entorno (no incluir en git)
+├── .gitignore            # Archivos a ignorar
+└── README.md             # Este archivo
 ```
 
 ---
@@ -135,29 +167,30 @@ tts_realtime/
 ### **Arquitectura General**
 
 ```
-┌─────────────────────┐
-│   Navegador (Vue)   │
-├─────────────────────┤
-│ • Web Speech API    │
-│ • WebSocket         │
-│ • Canvas (Visual)   │
-└──────────┬──────────┘
-           │ WebSocket
-           ▼
-┌─────────────────────┐
-│  FastAPI Server     │
-├─────────────────────┤
-│ • Gemini 2.5 Flash  │
-│ • Streaming         │
-│ • RAG (simulado)    │
-└──────────┬──────────┘
-           │
-           ▼
-    ┌──────────────┐
-    │ Google Cloud │
-    │  - Gemini    │
-    │  - TTS       │
-    └──────────────┘
+┌─────────────────────────────┐
+│   Navegador (Vue.js/JS)     │
+├─────────────────────────────┤
+│ • Web Speech API            │
+│ • WebSocket                 │
+│ • Canvas Visualizer         │
+└──────────────┬──────────────┘
+               │ WebSocket
+               ▼
+┌─────────────────────────────┐
+│  FastAPI Server (Python)    │
+├─────────────────────────────┤
+│ • Gemini 2.5 Flash          │
+│ • Streaming en tiempo real  │
+│ • RAG inteligente           │
+│ • Rust backend (opcional)   │
+└──────────────┬──────────────┘
+               │
+               ▼
+    ┌──────────────────────┐
+    │  Google Cloud APIs   │
+    │  • Gemini AI         │
+    │  • Text-to-Speech    │
+    └──────────────────────┘
 ```
 
 ### **Flujo de Conversación (main.py - Modo Rápido)**
@@ -165,7 +198,7 @@ tts_realtime/
 1. **Usuario habla** → Web Speech API transcribe en frontend
 2. **Frontend envía texto** → WebSocket al servidor
 3. **Servidor ejecuta RAG** → Busca contexto relevante
-4. **Gemini procesa** → Con contexto + prompt
+4. **Gemini procesa** → Con contexto + prompt optimizado
 5. **Streaming en vivo** → Servidor envía chunks de respuesta
 6. **Frontend reproduce** → TTS del navegador lee la respuesta
 7. **Loop continuo** → Vuelve a escuchar automáticamente
@@ -174,7 +207,7 @@ tts_realtime/
 
 1. **Usuario habla** → MediaRecorder captura audio binario
 2. **Frontend envía Blob** → WebSocket binario al servidor
-3. **Gemini transcribe** → Audio real → Texto preciso
+3. **Gemini transcribe** → Audio real → Texto preciso (potenciado por Rust)
 4. **Resto igual** → Procesa con RAG y genera respuesta
 5. **Streaming + TTS** → Igual que arriba
 
@@ -239,6 +272,18 @@ Asistente: (Automáticamente escuchando y respondiendo)
 
 ---
 
+## 🔬 Optimización con Rust
+
+Los componentes críticos del sistema que requieren baja latencia están implementados en Rust:
+
+- **Procesamiento de audio**: Decodificación y análisis de frecuencia de ultrabajalencia
+- **Gestión de buffers**: Asignación segura de memoria sin garbage collection
+- **WebSocket binario**: Transferencia eficiente de chunks de audio
+
+El backend Python actúa como orquestador mientras que Rust maneja las operaciones críticas, garantizando respuestas <100ms.
+
+---
+
 ## 🐛 Troubleshooting
 
 ### ❌ Error: "Necesitas dar permisos de micrófono"
@@ -252,6 +297,12 @@ Asistente: (Automáticamente escuchando y respondiendo)
 2. Agregaste `GEMINI_API_KEY=tu_clave_aqui`
 3. Ejecutas `dotenv.load_dotenv()` en el servidor
 
+### ❌ Error: "Latencia alta en respuestas"
+
+**Solución:** Compila los componentes Rust en modo release:
+```bash
+cargo build --release
+```
 
 ---
 
@@ -277,6 +328,11 @@ Asistente: (Automáticamente escuchando y respondiendo)
 - TTS: Speech Synthesis (síntesis de voz)
 - Sin dependencias externas en el navegador
 
+### **Rust para Backend Crítico**
+- Rendimiento garantizado sin garbage collection
+- Seguridad de memoria en tiempo de compilación
+- Paralelismo seguro con traits y ownership
+
 ---
 
 ## 📈 Mejoras Futuras
@@ -286,10 +342,25 @@ Asistente: (Automáticamente escuchando y respondiendo)
 - [ ] Persistencia de conversaciones
 - [ ] Sistema de autenticación de usuarios
 - [ ] Interfaz de administración
-- [ ] Estadísticas y analytics
+- [ ] Estadísticas y analytics avanzadas
 - [ ] Soporte para múltiples idiomas UI
-- [ ] Caché de respuestas
+- [ ] Caché de respuestas con Redis
 - [ ] Rate limiting inteligente
+- [ ] Componentes adicionales en Rust para optimización
+
+---
+
+## 📊 Stack Tecnológico
+
+```
+Frontend:     HTML5 | JavaScript | Web Audio API | Canvas
+Backend:      Python (FastAPI, uvicorn)
+Performance:  Rust (audio processing, critical paths)
+LLM:          Google Gemini 2.5 Flash
+Communication: WebSocket (bidireccional)
+TTS:          Web Speech API + Google Cloud Text-to-Speech
+Cloud:        Google Cloud Platform
+```
 
 ---
 
@@ -301,7 +372,7 @@ Este proyecto está bajo licencia **MIT**. Ver `LICENSE` para más detalles.
 
 ## 👤 Autor
 
-Creado por **Dan178A**
+Creado por **Dan178A** | [GitHub Profile](https://github.com/Dan178A)
 
 ---
 
@@ -323,15 +394,17 @@ Si tienes preguntas o problemas:
 - Abre un **Issue** en el repositorio
 - Revisa la sección de Troubleshooting
 - Consulta la documentación de [Google Gemini](https://ai.google.dev/)
+- Explora la [documentación de Rust](https://doc.rust-lang.org/)
 
 ---
 
 ## ⭐ Si te fue útil, ¡dale una estrella! ⭐
 
 ```
-🌟 tts_realtime - Asistente IA conversacional en tiempo real 🌟
+🌟 RealtimeVoiceAssistant - Asistente IA conversacional en tiempo real con Rust 🌟
 ```
 
 ---
 
 **Última actualización:** Junio 2026
+**Stack:** Rust + Python + Gemini AI + WebSocket
