@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Asistente de voz en tiempo real con Google Gemini, RAG vectorial y WebSockets — servidor en Rust/Axum.">
+    <title>Gemini Live — Asistente IA en Tiempo Real</title>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <!-- App Styles -->
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div id="app" v-cloak>
+    <!-- Background Glow Elements -->
+    <div class="ambient-glow-1"></div>
+    <div class="ambient-glow-2"></div>
+
+    <!-- RAG Sidebar -->
+    <aside class="sidebar" :class="{ collapsed: !sidebarOpen }">
+        <div class="sidebar-header">
+            <h2>Base del Conocimiento</h2>
+            <button class="btn-toggle-sidebar" @click="sidebarOpen = false">✕</button>
+        </div>
+
+        <!-- Add Document Form -->
+        <div class="rag-form">
+            <div class="form-group">
+                <label for="doc-content">Agregar Información (RAG)</label>
+                <textarea
+                    id="doc-content"
+                    class="form-control"
+                    rows="4"
+                    placeholder="Escribe datos de la empresa, políticas, preguntas frecuentes..."
+                    v-model="newDocText"
+                    :disabled="submittingDoc"
+                ></textarea>
+            </div>
+            <button class="btn-submit" @click="addDocument" :disabled="submittingDoc || !newDocText.trim()">
+                {{ submittingDoc ? 'Indexando...' : 'Indexar Documento' }}
+            </button>
+        </div>
+
+        <!-- Documents List -->
+        <div class="doc-list-container">
+            <h3>Documentos Cargados ({{ documents.length }})</h3>
+            <div v-if="documents.length === 0" style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">
+                Cargando base de conocimientos predeterminada...
+            </div>
+            <div class="doc-item" v-for="doc in documents" :key="doc.id">
+                <div class="doc-content">{{ doc.content }}</div>
+                <div class="doc-meta">
+                    <span class="badge" :class="doc.has_embedding ? 'badge-embedding' : 'badge-text'">
+                        {{ doc.has_embedding ? 'Con Vector' : 'Solo Texto' }}
+                    </span>
+                    <button class="btn-delete-doc" @click="deleteDocument(doc.id)">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+        <header class="workspace-header">
+            <button class="sidebar-toggle-trigger" @click="sidebarOpen = !sidebarOpen" v-if="!sidebarOpen">
+                📂 Base de RAG
+            </button>
+            <div v-else></div>
+
+            <!-- Mode Switcher -->
+            <div class="mode-switcher">
+                <button class="mode-btn" :class="{ active: mode === 'texto_stt' }" @click="setMode('texto_stt')"
+                    :disabled="estado !== 'apagado' && estado !== 'durmiendo'">
+                    Modo Texto Rápido (STT)
+                </button>
+                <button class="mode-btn" :class="{ active: mode === 'audio_hibrido' }" @click="setMode('audio_hibrido')"
+                    :disabled="estado !== 'apagado' && estado !== 'durmiendo'">
+                    Modo Audio Real (Gemini)
+                </button>
+            </div>
+        </header>
+
+        <!-- Visualizer -->
+        <section class="visualizer-section">
+            <div class="canvas-container">
+                <div class="pulse-core" :class="stateClass"></div>
+                <canvas ref="canvas"></canvas>
+            </div>
+            <button v-if="estado === 'apagado'" class="btn-action"
+                :style="{'--primary': getThemeColor(), '--primary-glow': getThemeGlow()}"
+                @click="iniciarSistema">
+                CONECTAR ASISTENTE
+            </button>
+        </section>
+
+        <!-- Live Feedback -->
+        <div class="transcription-live" v-if="textoTemporal">
+            {{ mode === 'audio_hibrido' ? '🎙️ Escuchando audio...' : '🗣️ Transcribiendo...' }}
+            <br>
+            <span style="color: white; font-weight: 500;">"{{ textoTemporal }}..."</span>
+        </div>
+        <div class="transcription-live" v-else-if="estado === 'procesando'">🧠 Pensando respuesta con Gemini...</div>
+        <div class="transcription-live" v-else-if="estado === 'hablando'">🔊 Hablando...</div>
+        <div class="transcription-live" v-else></div>
+
+        <!-- History / Chat -->
+        <section class="history-section">
+            <div class="history-header">
+                <span class="history-title">Conversación</span>
+                <button class="btn-clear" @click="clearHistory">Limpiar historial</button>
+            </div>
+            <div class="messages-container" ref="historyContainer">
+                <div v-if="mensajes.length === 0"
+                    style="color: var(--text-muted); text-align: center; margin: auto; max-width: 320px; font-size: 0.95rem;">
+                    Conecta el sistema y di <strong>"{{ palabraActivacion }}"</strong> para iniciar.
+                </div>
+                <div v-for="(msg, index) in mensajes" :key="index" class="message-row" :class="msg.tipo">
+                    <div class="bubble" v-html="msg.texto"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Status Bar -->
+        <footer class="status-bar" :class="{ 'status-active': estado !== 'apagado' }">
+            <span class="status-indicator"></span>
+            <span>{{ statusText }}</span>
+        </footer>
+    </main>
+</div>
+
+<!-- Vue 2 CDN -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2.7.16/dist/vue.js"></script>
+<!-- App Logic -->
+<script src="/js/app.js"></script>
+
+</body>
+</html>

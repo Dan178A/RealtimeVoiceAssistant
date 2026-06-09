@@ -1,0 +1,7 @@
+# Tell GitHub Linguist that front-end assets are not the "language" of this project.
+# This ensures Rust is shown as the primary language on the repository page.
+
+static/* linguist-vendored
+*.html  linguist-vendored
+*.css   linguist-vendored
+*.js    linguist-vendored

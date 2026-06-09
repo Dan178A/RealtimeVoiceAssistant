@@ -50,8 +50,8 @@ async fn main() {
         .route("/ws/chat", get(ws_chat_handler))
         .route("/api/documents", get(list_documents_handler).post(add_document_handler))
         .route("/api/documents/:id", delete(delete_document_handler))
-        // Fallback service to serve frontend files (index.html, etc.) from the workspace root
-        .fallback_service(ServeDir::new("./"))
+        // Serve all static frontend files from ./static/
+        .fallback_service(ServeDir::new("./static"))
         .layer(cors)
         .with_state(state);
 
