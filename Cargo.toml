@@ -1,0 +1,28 @@
+[package]
+name = "realtime_voice_assistant"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "=1.38.0", features = ["full"] }
+axum = { version = "=0.7.5", features = ["ws"] }
+tower-http = { version = "=0.5.2", features = ["fs", "cors"] }
+serde = { version = "=1.0.203", features = ["derive"] }
+serde_json = "=1.0.120"
+reqwest = { version = "=0.12.4", features = ["json", "stream"] }
+dotenvy = "0.15"
+futures-util = "0.3"
+bytes = "1"
+base64 = "0.22"
+tracing = "0.1"
+tracing-subscriber = { version = "=0.3.18", features = ["env-filter"] }
+rand = "0.8"
+uuid = { version = "=1.8.0", features = ["v4"] }
+
+# Pins to prevent pulling in edition 2024 transitive dependencies
+idna = "=0.5.0"
+url = "=2.5.0"
+hashbrown = "=0.14.5"
+indexmap = "=2.2.6"
+foldhash = "=0.1.2"
+allocator-api2 = "=0.2.18"

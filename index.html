@@ -1,302 +1,1223 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Assistants</title>
+    <title>Gemini Live & RAG Voice Assistant</title>
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap"
+        rel="stylesheet">
+    <!-- Vue 2.7 -->
     <script src="https://cdn.jsdelivr.net/npm/vue@2.7.16/dist/vue.js"></script>
     <style>
-        /* UI Estilo Gemini Live (Oscuro, Inmersivo) */
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f0f11; color: #ffffff; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        .header { padding: 20px; text-align: center; opacity: 0.7; font-size: 0.9em; letter-spacing: 1px;}
-        
-        .visualizer-container { flex: 1; display: flex; justify-content: center; align-items: center; position: relative; }
-        canvas { width: 100%; max-width: 800px; height: 300px; filter: drop-shadow(0 0 20px rgba(66, 133, 244, 0.5)); }
-        
-        .text-container { height: 35vh; padding: 20px 40px; overflow-y: auto; background: linear-gradient(to top, #0f0f11 80%, transparent); display: flex; flex-direction: column; justify-content: flex-end;}
-        .mensaje { font-size: 1.2em; line-height: 1.5; margin-bottom: 15px; opacity: 0.9; }
-        .usuario { color: #8ab4f8; }
-        .gemini { color: #e8eaed; }
-        
-        .status-bar { padding: 20px; text-align: center; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 0.8em; transition: color 0.3s;}
-        .status-idle { color: #5f6368; }
-        .status-listening { color: #fbbc04; animation: pulseText 1.5s infinite;}
-        .status-speaking { color: #34a853; }
-        
-        .btn-start { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #4285f4; color: white; border: none; padding: 15px 30px; border-radius: 30px; font-size: 1.2em; cursor: pointer; z-index: 10; box-shadow: 0 4px 15px rgba(66, 133, 244, 0.4);}
-        .btn-start:hover { background: #3367d6; }
-
-        @keyframes pulseText { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
-        
-        /* Ocultamos scrollbar para más inmersión */
-        ::-webkit-scrollbar { display: none; }
-    </style>
-</head>
-<body>
-
-<div id="app">
-    <div class="header">ASISTENTE IA V2.0</div>
-
-    <div class="visualizer-container">
-        <button v-if="estado === 'apagado'" class="btn-start" @click="iniciarSistema">INICIAR SISTEMA</button>
-        <canvas ref="canvas"></canvas>
-    </div>
-
-    <div class="text-container" ref="historialDiv">
-        <div v-for="(msg, index) in mensajes" :key="index" :class="['mensaje', msg.tipo]">
-            <span v-html="msg.texto"></span>
-        </div>
-        <div class="mensaje usuario" v-if="textoTemporal" style="opacity: 0.5;">
-            <i>{{ textoTemporal }}...</i>
-        </div>
-    </div>
-
-    <div class="status-bar" :class="claseEstado">
-        {{ textoEstado }}
-    </div>
-</div>
-
-<script>
-new Vue({
-    el: '#app',
-    data: {
-        ws: null,
-        reconocimiento: null,
-        estado: 'apagado', // apagado, durmiendo, escuchando_live, procesando, hablando
-        palabraActivacion: 'asistente',
-        textoTemporal: '',
-        mensajes: [],
-        silenceTimer: null,
-        
-        // Variables de Audio
-        audioContext: null,
-        analyser: null,
-        microphone: null,
-        
-        // Variables de TTS (Voz)
-        vozSeleccionada: null,
-        fraseAcumulada: "",
-    },
-    computed: {
-        claseEstado() {
-            if (this.estado === 'durmiendo') return 'status-idle';
-            if (this.estado === 'escuchando_live') return 'status-listening';
-            if (this.estado === 'hablando') return 'status-speaking';
-            return '';
-        },
-        textoEstado() {
-            if (this.estado === 'durmiendo') return `Diga "${this.palabraActivacion}" para iniciar conversación`;
-            if (this.estado === 'escuchando_live') return `Modo Live: Escuchando...`;
-            if (this.estado === 'procesando') return `Analizando...`;
-            if (this.estado === 'hablando') return `Respondiendo...`;
-            return '';
+        :root {
+            --bg-gradient: radial-gradient(circle at center, #181528 0%, #090810 100%);
+            --primary: #8a2be2;
+            --primary-glow: rgba(138, 43, 226, 0.4);
+            --accent-blue: #00bfff;
+            --accent-green: #00ff7f;
+            --accent-gold: #ffd700;
+            --text: #eef0f6;
+            --text-muted: #8c92ac;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-hover: rgba(255, 255, 255, 0.07);
         }
-    },
-    mounted() {
-        this.configurarVoz();
-    },
-    methods: {
-        configurarVoz() {
-            // Cargar voces del navegador y buscar una buena voz en español
-            window.speechSynthesis.onvoiceschanged = () => {
-                const voces = window.speechSynthesis.getVoices();
-                const voz = "Google español de Estados Unidos"
-                // Intenta buscar una voz de Google o de alta calidad
-                this.vozSeleccionada = voces.find(v => v.name === voz) || voces.find(v => v.lang.startsWith('es')) || null;
-            };
-        },
 
-        async iniciarSistema() {
-            // 1. Conexión WebSocket
-            this.ws = new WebSocket("ws://localhost:8000/ws/chat");
-            
-            this.ws.onmessage = (event) => {
-                if (event.data === "[FIN_RESPUESTA]") {
-                    // Leer lo que haya quedado acumulado
-                    if (this.fraseAcumulada.trim()) this.reproducirVoz(this.fraseAcumulada);
-                    this.fraseAcumulada = "";
-                    
-                    // Al terminar de hablar, NO vuelve a dormir, sigue en modo Live
-                    // Usamos un pequeño delay para que no se escuche a sí mismo
-                    setTimeout(() => {
-                        this.estado = 'escuchando_live';
-                    }, 500);
-                    
-                } else {
-                    this.estado = 'hablando';
-                    let ultimoMsg = this.mensajes[this.mensajes.length - 1];
-                    let chunk = event.data;
-                    
-                    if (ultimoMsg && ultimoMsg.tipo === 'gemini') {
-                        ultimoMsg.texto += chunk.replace(/\n/g, "<br>");
-                    }
-                    
-                    // Lógica para que hable de forma fluida: acumula hasta ver un punto o coma
-                    this.fraseAcumulada += chunk;
-                    if (chunk.includes('.') || chunk.includes('?') || chunk.includes('!') || chunk.includes(':')) {
-                        this.reproducirVoz(this.fraseAcumulada);
-                        this.fraseAcumulada = ""; // Reiniciamos para la siguiente frase
-                    }
-                }
-                this.$nextTick(() => { this.scrollAbajo(); });
-            };
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-            // 2. Configurar STT
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            this.reconocimiento = new SpeechRecognition();
-            this.reconocimiento.lang = 'es-ES';
-            this.reconocimiento.continuous = true;
-            this.reconocimiento.interimResults = true;
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
 
-            try {
-                // Solicitar permisos y cancelar ruido de hardware
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } 
-                });
-                
-                this.iniciarVisualizador(stream);
-                this.reconocimiento.start();
-                this.estado = 'durmiendo';
-            } catch (e) {
-                alert("Necesitas dar permisos de micrófono.");
+        #app {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Ambient glowing backgrounds */
+        .ambient-glow-1 {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(138, 43, 226, 0.15) 0%, transparent 70%);
+            top: -100px;
+            left: -100px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .ambient-glow-2 {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0, 191, 255, 0.1) 0%, transparent 70%);
+            bottom: -200px;
+            right: -100px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Sidebar for RAG Panel */
+        .sidebar {
+            width: 380px;
+            height: 100%;
+            background: rgba(10, 9, 17, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-right: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(-100%);
+            position: absolute;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 30%, var(--accent-blue) 100%);
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .btn-toggle-sidebar {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 8px;
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+
+        .btn-toggle-sidebar:hover {
+            color: white;
+            background: var(--glass-hover);
+        }
+
+        .rag-form {
+            padding: 24px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .form-control {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text);
+            padding: 12px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            resize: none;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        .btn-submit {
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary) 0%, #b15dff 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            padding: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: 0.3s;
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.3);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(138, 43, 226, 0.5);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .doc-list-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .doc-list-container h3 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .doc-item {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 14px;
+            position: relative;
+            transition: 0.3s;
+        }
+
+        .doc-item:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            background: var(--glass-hover);
+        }
+
+        .doc-content {
+            font-size: 0.85rem;
+            line-height: 1.4;
+            margin-bottom: 10px;
+            color: rgba(238, 240, 246, 0.85);
+            word-break: break-word;
+        }
+
+        .doc-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .badge {
+            font-size: 0.7rem;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-embedding {
+            background: rgba(0, 255, 127, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(0, 255, 127, 0.2);
+        }
+
+        .badge-text {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-muted);
+            border: 1px solid var(--glass-border);
+        }
+
+        .btn-delete-doc {
+            background: none;
+            border: none;
+            color: #ff4d4d;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: 0.2s;
+        }
+
+        .btn-delete-doc:hover {
+            color: #ff3333;
+            text-decoration: underline;
+        }
+
+        /* Main Workspace */
+        .workspace {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            z-index: 5;
+            position: relative;
+            padding: 24px;
+        }
+
+        .workspace-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 60px;
+        }
+
+        .sidebar-toggle-trigger {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text);
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            transition: 0.3s;
+        }
+
+        .sidebar-toggle-trigger:hover {
+            background: var(--glass-hover);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Mode Switcher */
+        .mode-switcher {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            padding: 4px;
+            border-radius: 12px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .mode-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        .mode-btn.active {
+            background: var(--glass-hover);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Visualizer Section */
+        .visualizer-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .canvas-container {
+            width: 100%;
+            max-width: 500px;
+            height: 350px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+
+        .pulse-core {
+            position: absolute;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--primary) 0%, rgba(138, 43, 226, 0.4) 60%, transparent 100%);
+            filter: blur(8px);
+            z-index: 1;
+            transition: 0.5s;
+        }
+
+        /* Assistant States */
+        .state-durmiendo {
+            --primary: #4a4d5e;
+            --accent-glow: rgba(74, 77, 94, 0.3);
+        }
+
+        .state-escuchando_live {
+            --primary: #ffd700;
+            --primary-glow: rgba(255, 215, 0, 0.4);
+            animation: core-pulse 1.5s infinite ease-in-out;
+        }
+
+        .state-grabando_comando {
+            --primary: #ff4a4a;
+            --primary-glow: rgba(255, 74, 74, 0.4);
+            animation: core-pulse 1s infinite ease-in-out;
+        }
+
+        .state-procesando {
+            --primary: #00bfff;
+            --primary-glow: rgba(0, 191, 255, 0.4);
+            animation: core-rotate 2s infinite linear;
+        }
+
+        .state-hablando {
+            --primary: #00ff7f;
+            --primary-glow: rgba(0, 255, 127, 0.4);
+        }
+
+        @keyframes core-pulse {
+            0% {
+                transform: scale(0.9);
+                opacity: 0.6;
             }
 
-            // 3. Lógica del Cerebro
-            this.reconocimiento.onresult = (event) => {
-                // Si la IA está hablando, ignoramos el micrófono para que no se interrumpa a sí misma
-                if (this.estado === 'hablando' || this.estado === 'procesando') return;
+            50% {
+                transform: scale(1.15);
+                opacity: 0.9;
+            }
 
-                let transcripcionActual = "";
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    transcripcionActual += event.results[i][0].transcript;
-                }
-                
-                let textoLimpio = transcripcionActual.trim().toLowerCase();
-
-                // FASE 1: Despertar
-                if (this.estado === 'durmiendo') {
-                    if (textoLimpio.includes(this.palabraActivacion)) {
-                        this.estado = 'escuchando_live';
-                        this.textoTemporal = ""; 
-                        
-                        // Sonido de activación sutil (opcional)
-                        let osc = this.audioContext.createOscillator();
-                        osc.connect(this.audioContext.destination);
-                        osc.frequency.setValueAtTime(800, this.audioContext.currentTime);
-                        osc.start(); osc.stop(this.audioContext.currentTime + 0.1);
-                    }
-                    return;
-                }
-
-                // FASE 2: Conversación Continua
-                if (this.estado === 'escuchando_live') {
-                    // Comando para volver a dormir
-                    if (textoLimpio.includes("adiós") || textoLimpio.includes("apagar")) {
-                        this.estado = 'durmiendo';
-                        this.textoTemporal = "";
-                        return;
-                    }
-
-                    this.textoTemporal = transcripcionActual;
-                    
-                    clearTimeout(this.silenceTimer);
-                    this.silenceTimer = setTimeout(() => {
-                        this.enviarComando();
-                    }, 1500);
-                }
-            };
-
-            this.reconocimiento.onend = () => {
-                if (this.estado !== 'apagado') this.reconocimiento.start();
-            };
-        },
-
-        enviarComando() {
-            if (!this.textoTemporal.trim()) return;
-            this.mensajes.push({ tipo: 'usuario', texto: this.textoTemporal });
-            this.mensajes.push({ tipo: 'gemini', texto: '' }); 
-            this.ws.send(this.textoTemporal);
-            this.textoTemporal = "";
-            this.estado = 'procesando';
-            this.$nextTick(() => { this.scrollAbajo(); });
-        },
-
-        reproducirVoz(texto) {
-            // Usamos la API de síntesis de voz del navegador
-            if (!window.speechSynthesis) return;
-            
-            // Limpiamos etiquetas HTML y Markdown básico para que no las lea en voz alta
-            let textoLimpio = texto.replace(/<[^>]*>?/gm, '').replace(/\*/g, '');
-            if (!textoLimpio.trim()) return;
-
-            let locucion = new SpeechSynthesisUtterance(textoLimpio);
-            if (this.vozSeleccionada) locucion.voice = this.vozSeleccionada;
-            
-            locucion.rate = 1.1; // Un poco más rápido para mayor naturalidad
-            locucion.pitch = 1.0;
-            
-            window.speechSynthesis.speak(locucion);
-        },
-
-        iniciarVisualizador(stream) {
-            const canvas = this.$refs.canvas;
-            const canvasCtx = canvas.getContext("2d");
-            
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            this.analyser = this.audioContext.createAnalyser();
-            this.microphone = this.audioContext.createMediaStreamSource(stream);
-            
-            this.microphone.connect(this.analyser);
-            this.analyser.fftSize = 256;
-            
-            const bufferLength = this.analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-
-            const draw = () => {
-                requestAnimationFrame(draw);
-                this.analyser.getByteFrequencyData(dataArray);
-
-                canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                // Color dependiendo del estado
-                let gradient = canvasCtx.createLinearGradient(0, 0, canvas.width, 0);
-                if (this.estado === 'escuchando_live') {
-                    gradient.addColorStop(0, "#fbbc04"); gradient.addColorStop(1, "#ea4335");
-                } else if (this.estado === 'hablando') {
-                    gradient.addColorStop(0, "#34a853"); gradient.addColorStop(1, "#4285f4");
-                } else {
-                    gradient.addColorStop(0, "#5f6368"); gradient.addColorStop(1, "#3c4043");
-                }
-
-                canvasCtx.fillStyle = gradient;
-                
-                // Dibujar una onda suavizada en el centro
-                const barWidth = (canvas.width / bufferLength) * 2.5;
-                let x = 0;
-                
-                for(let i = 0; i < bufferLength; i++) {
-                    const barHeight = (dataArray[i] / 255) * canvas.height;
-                    
-                    // Dibujar hacia arriba y hacia abajo desde el centro
-                    const y = (canvas.height - barHeight) / 2;
-                    
-                    // Bordes redondeados
-                    canvasCtx.beginPath();
-                    canvasCtx.roundRect(x, y, barWidth - 2, barHeight, 10);
-                    canvasCtx.fill();
-
-                    x += barWidth;
-                }
-            };
-            draw();
-        },
-
-        scrollAbajo() {
-            const container = this.$refs.historialDiv;
-            container.scrollTop = container.scrollHeight;
+            100% {
+                transform: scale(0.9);
+                opacity: 0.6;
+            }
         }
-    }
-});
-</script>
+
+        @keyframes core-rotate {
+            0% {
+                filter: blur(8px) hue-rotate(0deg);
+            }
+
+            100% {
+                filter: blur(8px) hue-rotate(360deg);
+            }
+        }
+
+        .btn-action {
+            position: absolute;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--glass-border);
+            color: white;
+            padding: 16px 36px;
+            border-radius: 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            letter-spacing: 1px;
+        }
+
+        .btn-action:hover {
+            background: var(--primary);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 25px var(--primary-glow);
+            transform: translateY(-2px);
+        }
+
+        /* History & Conversation Section */
+        .history-section {
+            height: 38vh;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: inset 0 2px 20px rgba(255, 255, 255, 0.01);
+            max-width: 800px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .history-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            color: var(--text-muted);
+        }
+
+        .btn-clear {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: 0.2s;
+        }
+
+        .btn-clear:hover {
+            color: #ff4d4d;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message-row {
+            display: flex;
+            width: 100%;
+        }
+
+        .message-row.user {
+            justify-content: flex-end;
+        }
+
+        .message-row.assistant {
+            justify-content: flex-start;
+        }
+
+        .bubble {
+            max-width: 75%;
+            padding: 14px 20px;
+            border-radius: 20px;
+            font-size: 1rem;
+            line-height: 1.5;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        }
+
+        .message-row.user .bubble {
+            background: linear-gradient(135deg, var(--primary) 0%, #6a1b9a 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .message-row.assistant .bubble {
+            background: rgba(255, 255, 255, 0.04);
+            color: #f1f3f9;
+            border-bottom-left-radius: 4px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .transcription-live {
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 0.95rem;
+            text-align: center;
+            padding: 0 24px 16px 24px;
+            min-height: 38px;
+            animation: pulse-opacity 1.5s infinite ease-in-out;
+        }
+
+        @keyframes pulse-opacity {
+            0% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 0.8;
+            }
+
+            100% {
+                opacity: 0.4;
+            }
+        }
+
+        /* Status Bar */
+        .status-bar {
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--text-muted);
+            margin-right: 10px;
+            display: inline-block;
+        }
+
+        .status-active .status-indicator {
+            background-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+            animation: pulse-indicator 1.2s infinite alternate;
+        }
+
+        @keyframes pulse-indicator {
+            0% {
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+
+            100% {
+                transform: scale(1.2);
+                opacity: 1;
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Utilities */
+        [v-cloak] {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app" v-cloak>
+        <!-- Background Glow Elements -->
+        <div class="ambient-glow-1"></div>
+        <div class="ambient-glow-2"></div>
+
+        <!-- RAG Sidebar -->
+        <aside class="sidebar" :class="{ collapsed: !sidebarOpen }">
+            <div class="sidebar-header">
+                <h2>Base del Conocimiento</h2>
+                <button class="btn-toggle-sidebar" @click="sidebarOpen = false">✕</button>
+            </div>
+
+            <!-- Add Document Form -->
+            <div class="rag-form">
+                <div class="form-group">
+                    <label for="doc-content">Agregar Información (RAG)</label>
+                    <textarea id="doc-content" class="form-control" rows="4"
+                        placeholder="Escribe datos de la empresa, políticas, preguntas frecuentes..."
+                        v-model="newDocText" :disabled="submittingDoc"></textarea>
+                </div>
+                <button class="btn-submit" @click="addDocument" :disabled="submittingDoc || !newDocText.trim()">
+                    {{ submittingDoc ? 'Indexando...' : 'Indexar Documento' }}
+                </button>
+            </div>
+
+            <!-- Documents List -->
+            <div class="doc-list-container">
+                <h3>Documentos Cargados ({{ documents.length }})</h3>
+                <div v-if="documents.length === 0"
+                    style="color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">
+                    Cargando base de conocimientos predeterminada...
+                </div>
+                <div class="doc-item" v-for="doc in documents" :key="doc.id">
+                    <div class="doc-content">{{ doc.content }}</div>
+                    <div class="doc-meta">
+                        <span class="badge" :class="doc.has_embedding ? 'badge-embedding' : 'badge-text'">
+                            {{ doc.has_embedding ? 'Con Vector' : 'Solo Texto' }}
+                        </span>
+                        <button class="btn-delete-doc" @click="deleteDocument(doc.id)">Eliminar</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <header class="workspace-header">
+                <!-- Sidebar Trigger -->
+                <button class="sidebar-toggle-trigger" @click="sidebarOpen = !sidebarOpen" v-if="!sidebarOpen">
+                    📂 Base de RAG
+                </button>
+                <div v-else></div> <!-- spacer -->
+
+                <!-- Mode Switcher -->
+                <div class="mode-switcher">
+                    <button class="mode-btn" :class="{ active: mode === 'texto_stt' }" @click="setMode('texto_stt')"
+                        :disabled="estado !== 'apagado' && estado !== 'durmiendo'">
+                        Modo Texto Rápido (STT)
+                    </button>
+                    <button class="mode-btn" :class="{ active: mode === 'audio_hibrido' }"
+                        @click="setMode('audio_hibrido')" :disabled="estado !== 'apagado' && estado !== 'durmiendo'">
+                        Modo Audio Real (Gemini)
+                    </button>
+                </div>
+            </header>
+
+            <!-- Visualizer Area -->
+            <section class="visualizer-section">
+                <div class="canvas-container">
+                    <!-- Glowing central aura -->
+                    <div class="pulse-core" :class="stateClass"></div>
+                    <canvas ref="canvas"></canvas>
+                </div>
+
+                <!-- Main Activation Button -->
+                <button v-if="estado === 'apagado'" class="btn-action"
+                    :style="{'--primary': getThemeColor(), '--primary-glow': getThemeGlow()}" @click="iniciarSistema">
+                    CONECTAR ASISTENTE
+                </button>
+            </section>
+
+            <!-- Live feedback translation -->
+            <div class="transcription-live" v-if="textoTemporal">
+                {{ mode === 'audio_hibrido' ? '🎙️ Escuchando audio...' : '🗣️ Transcribiendo...' }}
+                <br>
+                <span style="color: white; font-weight: 500;">"{{ textoTemporal }}..."</span>
+            </div>
+            <div class="transcription-live" v-else-if="estado === 'procesando'">
+                🧠 Pensando respuesta con Gemini...
+            </div>
+            <div class="transcription-live" v-else-if="estado === 'hablando'">
+                🔊 Hablando...
+            </div>
+            <div class="transcription-live" v-else></div> <!-- spacer -->
+
+            <!-- History/Chat Panel -->
+            <section class="history-section">
+                <div class="history-header">
+                    <span class="history-title">Conversación</span>
+                    <button class="btn-clear" @click="clearHistory">Limpiar historial</button>
+                </div>
+
+                <div class="messages-container" ref="historyContainer">
+                    <div v-if="mensajes.length === 0"
+                        style="color: var(--text-muted); text-align: center; margin: auto; max-width: 320px; font-size: 0.95rem;">
+                        Conecta el sistema y di <strong>"{{ palabraActivacion }}"</strong> para iniciar la conversación.
+                    </div>
+                    <div v-for="(msg, index) in mensajes" :key="index" class="message-row" :class="msg.tipo">
+                        <div class="bubble" v-html="msg.texto"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status Bar -->
+            <footer class="status-bar" :class="{ 'status-active': estado !== 'apagado' }">
+                <span class="status-indicator"></span>
+                <span>{{ statusText }}</span>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                // App settings
+                sidebarOpen: false,
+                mode: 'texto_stt', // 'texto_stt' o 'audio_hibrido'
+                estado: 'apagado', // apagado, durmiendo, escuchando_live, procesando, hablando, grabando_comando (for hybrid mode)
+                palabraActivacion: 'asistente',
+
+                // RAG management
+                documents: [],
+                newDocText: '',
+                submittingDoc: false,
+
+                // WS & Logic
+                ws: null,
+                reconocimiento: null,
+                textoTemporal: '',
+                mensajes: [],
+                silenceTimer: null,
+                comandoEnviado: false,
+
+                // Audio & Visualizer settings
+                audioContext: null,
+                analyser: null,
+                microphone: null,
+                streamGlobal: null,
+
+                // Hybrid mode recorder
+                mediaRecorder: null,
+                audioChunks: [],
+
+                // Browser-side voice synthesis
+                vozSeleccionada: null,
+                fraseAcumulada: "",
+            },
+            computed: {
+                stateClass() {
+                    return `state-${this.estado}`;
+                },
+                statusText() {
+                    if (this.estado === 'apagado') return 'Asistente Desconectado';
+                    if (this.estado === 'durmiendo') return `Modo Pasivo: di "${this.palabraActivacion}"`;
+                    if (this.estado === 'escuchando_live') return 'Modo Activo: Escuchando...';
+                    if (this.estado === 'grabando_comando') return 'Grabando audio real...';
+                    if (this.estado === 'procesando') return 'Procesando en el Servidor';
+                    if (this.estado === 'hablando') return 'Reproduciendo Respuesta';
+                    return 'Listo';
+                }
+            },
+            mounted() {
+                this.configurarVoz();
+                this.fetchDocuments();
+            },
+            methods: {
+                getThemeColor() {
+                    if (this.mode === 'audio_hibrido') return '#00bfff';
+                    return '#8a2be2';
+                },
+                getThemeGlow() {
+                    if (this.mode === 'audio_hibrido') return 'rgba(0, 191, 255, 0.4)';
+                    return 'rgba(138, 43, 226, 0.4)';
+                },
+                setMode(m) {
+                    this.mode = m;
+                },
+                configurarVoz() {
+                    if (!window.speechSynthesis) return;
+                    const selectVoice = () => {
+                        const voces = window.speechSynthesis.getVoices();
+                        // Intenta buscar una voz premium en español
+                        this.vozSeleccionada = voces.find(v => v.name.includes("Google") && v.lang.startsWith('es'))
+                            || voces.find(v => v.lang.startsWith('es'))
+                            || null;
+                    };
+                    selectVoice();
+                    window.speechSynthesis.onvoiceschanged = selectVoice;
+                },
+                async fetchDocuments() {
+                    try {
+                        const res = await fetch('/api/documents');
+                        if (res.ok) {
+                            this.documents = await res.json();
+                        }
+                    } catch (err) {
+                        console.error("Error cargando documentos de RAG:", err);
+                    }
+                },
+                async addDocument() {
+                    if (!this.newDocText.trim()) return;
+                    this.submittingDoc = true;
+                    try {
+                        const res = await fetch('/api/documents', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content: this.newDocText })
+                        });
+                        if (res.ok) {
+                            this.newDocText = '';
+                            await this.fetchDocuments();
+                        } else {
+                            alert("Error al guardar el documento.");
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert("Error al conectar con la API de RAG.");
+                    } finally {
+                        this.submittingDoc = false;
+                    }
+                },
+                async deleteDocument(id) {
+                    if (!confirm("¿Deseas eliminar este documento del RAG?")) return;
+                    try {
+                        const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+                        if (res.ok) {
+                            await this.fetchDocuments();
+                        }
+                    } catch (err) {
+                        console.error(err);
+                    }
+                },
+                clearHistory() {
+                    this.mensajes = [];
+                },
+                scrollAbajo() {
+                    this.$nextTick(() => {
+                        const container = this.$refs.historyContainer;
+                        if (container) {
+                            container.scrollTop = container.scrollHeight;
+                        }
+                    });
+                },
+                async iniciarSistema() {
+                    // Configure WebSocket
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const host = window.location.host || 'localhost:8000';
+                    this.ws = new WebSocket(`${protocol}//${host}/ws/chat`);
+
+                    this.ws.onopen = () => {
+                        this.estado = 'durmiendo';
+                        this.setupMicrophone();
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        const data = event.data;
+
+                        // 1. Check for audio transcription update
+                        if (data.startsWith("[TRANSCRIPCION]")) {
+                            const text = data.replace("[TRANSCRIPCION] ", "");
+                            this.mensajes.push({ tipo: 'user', texto: text });
+                            this.mensajes.push({ tipo: 'assistant', texto: '' });
+                            this.scrollAbajo();
+                        }
+                        // 2. Check for End of stream signal
+                        else if (data === "[FIN_RESPUESTA]") {
+                            if (this.fraseAcumulada.trim()) {
+                                this.reproducirVoz(this.fraseAcumulada);
+                            }
+                            this.fraseAcumulada = "";
+
+                            // Resume conversation state
+                            setTimeout(() => {
+                                if (this.mode === 'audio_hibrido') {
+                                    this.iniciarGrabacionAudio();
+                                } else {
+                                    this.estado = 'escuchando_live';
+                                }
+                            }, 500);
+                        }
+                        // 3. Regular streaming text tokens
+                        else {
+                            this.estado = 'hablando';
+                            let ultimoMsg = this.mensajes[this.mensajes.length - 1];
+
+                            if (ultimoMsg && ultimoMsg.tipo === 'assistant') {
+                                ultimoMsg.texto += data.replace(/\n/g, "<br>");
+                            }
+
+                            // Fluid reading synthesis
+                            this.fraseAcumulada += data;
+                            if (data.includes('.') || data.includes(',') || data.includes('?') || data.includes('!') || data.includes(':')) {
+                                this.reproducirVoz(this.fraseAcumulada);
+                                this.fraseAcumulada = "";
+                            }
+                            this.scrollAbajo();
+                        }
+                    };
+
+                    this.ws.onclose = () => {
+                        this.estado = 'apagado';
+                        this.textoTemporal = '';
+                        if (this.reconocimiento) this.reconocimiento.stop();
+                        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') this.mediaRecorder.stop();
+                    };
+
+                    this.ws.onerror = (e) => {
+                        console.error("WebSocket Error:", e);
+                        this.estado = 'apagado';
+                    };
+                },
+                async setupMicrophone() {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
+                        });
+
+                        this.streamGlobal = stream;
+                        this.iniciarVisualizador(stream);
+
+                        // Configure STT Browser-side Recognition
+                        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                        this.reconocimiento = new SpeechRecognition();
+                        this.reconocimiento.lang = 'es-ES';
+                        this.reconocimiento.continuous = true;
+                        this.reconocimiento.interimResults = true;
+
+                        this.reconocimiento.onresult = (event) => {
+                            if (this.estado === 'hablando' || this.estado === 'procesando') return;
+
+                            let transcripcionActual = "";
+                            for (let i = event.resultIndex; i < event.results.length; i++) {
+                                transcripcionActual += event.results[i][0].transcript;
+                            }
+                            let textoLimpio = transcripcionActual.trim().toLowerCase();
+
+                            // --- MODO TEXTO (STT) ---
+                            if (this.mode === 'texto_stt') {
+                                if (this.estado === 'durmiendo') {
+                                    if (textoLimpio.includes(this.palabraActivacion)) {
+                                        this.estado = 'escuchando_live';
+                                        this.textoTemporal = "";
+                                        this.playActivationSound();
+                                    }
+                                    return;
+                                }
+
+                                if (this.estado === 'escuchando_live') {
+                                    if (textoLimpio.includes("adiós") || textoLimpio.includes("apagar") || textoLimpio.includes("dormir")) {
+                                        this.estado = 'durmiendo';
+                                        this.textoTemporal = "";
+                                        return;
+                                    }
+
+                                    this.textoTemporal = transcripcionActual;
+
+                                    clearTimeout(this.silenceTimer);
+                                    this.silenceTimer = setTimeout(() => {
+                                        this.enviarComandoTexto();
+                                    }, 1500);
+                                }
+                            }
+                            // --- MODO AUDIO HÍBRIDO ---
+                            else if (this.mode === 'audio_hibrido') {
+                                if (this.estado === 'durmiendo') {
+                                    if (textoLimpio.includes(this.palabraActivacion)) {
+                                        this.iniciarGrabacionAudio();
+                                        this.playActivationSound();
+                                    }
+                                    return;
+                                }
+
+                                if (this.estado === 'grabando_comando' && !this.comandoEnviado) {
+                                    this.textoTemporal = transcripcionActual; // Visual feedback only
+
+                                    clearTimeout(this.silenceTimer);
+                                    this.silenceTimer = setTimeout(() => {
+                                        this.detenerYEnviarAudio();
+                                    }, 1500);
+                                }
+                            }
+                        };
+
+                        this.reconocimiento.onend = () => {
+                            if (this.estado !== 'apagado') {
+                                try {
+                                    this.reconocimiento.start();
+                                } catch (e) {
+                                    // Already started
+                                }
+                            }
+                        };
+
+                        this.reconocimiento.start();
+
+                    } catch (err) {
+                        console.error("Mic permissions error:", err);
+                        alert("Necesitas dar permisos de micrófono en tu navegador.");
+                        this.estado = 'apagado';
+                    }
+                },
+                enviarComandoTexto() {
+                    if (!this.textoTemporal.trim()) return;
+                    const txt = this.textoTemporal;
+                    this.mensajes.push({ tipo: 'user', texto: txt });
+                    this.mensajes.push({ tipo: 'assistant', texto: '' });
+
+                    this.ws.send(txt);
+                    this.textoTemporal = "";
+                    this.estado = 'procesando';
+                    this.scrollAbajo();
+                },
+                iniciarGrabacionAudio() {
+                    this.estado = 'grabando_comando';
+                    this.comandoEnviado = false;
+                    this.textoTemporal = "";
+                    this.audioChunks = [];
+
+                    this.mediaRecorder = new MediaRecorder(this.streamGlobal, { mimeType: 'audio/webm' });
+
+                    this.mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            this.audioChunks.push(event.data);
+                        }
+                    };
+
+                    this.mediaRecorder.onstop = () => {
+                        if (this.audioChunks.length > 0) {
+                            const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                            this.ws.send(audioBlob);
+                            this.estado = 'procesando';
+                        }
+                    };
+
+                    this.mediaRecorder.start();
+                },
+                detenerYEnviarAudio() {
+                    if (this.comandoEnviado) return;
+                    this.comandoEnviado = true;
+                    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                        this.mediaRecorder.stop();
+                    }
+                },
+                reproducirVoz(texto) {
+                    if (!window.speechSynthesis) return;
+                    // Clean HTML/Markdown
+                    const textoLimpio = texto.replace(/<[^>]*>?/gm, '').replace(/\*/g, '');
+                    if (!textoLimpio.trim()) return;
+
+                    const locucion = new SpeechSynthesisUtterance(textoLimpio);
+                    if (this.vozSeleccionada) {
+                        locucion.voice = this.vozSeleccionada;
+                    }
+                    locucion.rate = 1.1; // Slightly faster for flow
+                    window.speechSynthesis.speak(locucion);
+                },
+                playActivationSound() {
+                    if (!this.audioContext) return;
+                    let osc = this.audioContext.createOscillator();
+                    let gain = this.audioContext.createGain();
+                    osc.connect(gain);
+                    gain.connect(this.audioContext.destination);
+
+                    osc.frequency.setValueAtTime(600, this.audioContext.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(900, this.audioContext.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+
+                    osc.start();
+                    osc.stop(this.audioContext.currentTime + 0.15);
+                },
+                iniciarVisualizador(stream) {
+                    const canvas = this.$refs.canvas;
+                    if (!canvas) return;
+                    const canvasCtx = canvas.getContext("2d");
+
+                    // Adjust canvas bounding box
+                    const dpr = window.devicePixelRatio || 1;
+                    const rect = canvas.getBoundingClientRect();
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    canvasCtx.scale(dpr, dpr);
+
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    this.analyser = this.audioContext.createAnalyser();
+                    this.microphone = this.audioContext.createMediaStreamSource(stream);
+
+                    this.microphone.connect(this.analyser);
+                    this.analyser.fftSize = 512;
+
+                    const bufferLength = this.analyser.frequencyBinCount;
+                    const dataArray = new Uint8Array(bufferLength);
+
+                    const draw = () => {
+                        requestAnimationFrame(draw);
+                        if (this.estado === 'apagado') {
+                            canvasCtx.clearRect(0, 0, rect.width, rect.height);
+                            return;
+                        }
+
+                        this.analyser.getByteFrequencyData(dataArray);
+                        canvasCtx.clearRect(0, 0, rect.width, rect.height);
+
+                        // Circular visualizer styling
+                        const center_x = rect.width / 2;
+                        const center_y = rect.height / 2;
+
+                        // Determine base radius depending on state
+                        let base_radius = 65;
+                        let activeScale = 1;
+
+                        if (this.estado === 'escuchando_live' || this.estado === 'grabando_comando') {
+                            activeScale = 1.3;
+                        } else if (this.estado === 'hablando') {
+                            activeScale = 1.15;
+                        } else if (this.estado === 'procesando') {
+                            activeScale = 1.05;
+                        }
+
+                        // Determine gradient colors depending on state
+                        let gradient = canvasCtx.createLinearGradient(0, 0, rect.width, rect.height);
+                        if (this.estado === 'escuchando_live') {
+                            gradient.addColorStop(0, "#ffd700"); gradient.addColorStop(1, "#ffa500");
+                        } else if (this.estado === 'grabando_comando') {
+                            gradient.addColorStop(0, "#ff4a4a"); gradient.addColorStop(1, "#b30000");
+                        } else if (this.estado === 'hablando') {
+                            gradient.addColorStop(0, "#00ff7f"); gradient.addColorStop(1, "#00bfff");
+                        } else if (this.estado === 'procesando') {
+                            gradient.addColorStop(0, "#00bfff"); gradient.addColorStop(1, "#8a2be2");
+                        } else {
+                            gradient.addColorStop(0, "#5f6368"); gradient.addColorStop(1, "#3c4043");
+                        }
+
+                        // Draw outer floating wave ring
+                        canvasCtx.beginPath();
+                        canvasCtx.strokeStyle = gradient;
+                        canvasCtx.lineWidth = 3;
+                        canvasCtx.shadowBlur = 15;
+                        canvasCtx.shadowColor = this.getThemeColor();
+
+                        for (let i = 0; i < bufferLength; i++) {
+                            const angle = (i / bufferLength) * Math.PI * 2;
+                            const value = dataArray[i] / 255.0;
+
+                            // Apply visual frequency scaling
+                            const bounce = value * 45 * activeScale;
+                            const r = base_radius + bounce;
+
+                            const x = center_x + Math.cos(angle) * r;
+                            const y = center_y + Math.sin(angle) * r;
+
+                            if (i === 0) {
+                                canvasCtx.moveTo(x, y);
+                            } else {
+                                canvasCtx.lineTo(x, y);
+                            }
+                        }
+                        canvasCtx.closePath();
+                        canvasCtx.stroke();
+
+                        // Draw inner core circle
+                        canvasCtx.beginPath();
+                        canvasCtx.fillStyle = gradient;
+                        canvasCtx.shadowBlur = 0; // reset
+                        canvasCtx.arc(center_x, center_y, base_radius - 5, 0, Math.PI * 2);
+                        canvasCtx.fill();
+                    };
+                    draw();
+                }
+            }
+        });
+    </script>
 </body>
+
 </html>
